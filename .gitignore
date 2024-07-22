@@ -23,3 +23,6 @@ go.work.sum
 
 measurements.txt
 1brc
+
+cpu.prof
+mem.prof

@@ -94,7 +94,7 @@ func main() {
 		remaining := chunk[newline+1:]
 		chunk = chunk[:newline+1]
 		for {
-			bCity, after, hasSemi := bytes.Cut(chunk, []byte{';'})
+			bCity, after, hasSemi := split(chunk)
 			if !hasSemi {
 				break
 			}

@@ -1,9 +1,10 @@
 package main
 
 import (
-	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"runtime"
@@ -30,7 +31,7 @@ func split(line []byte) ([]byte, []byte, bool) {
 	return line[:index], line[index+1:], true
 }
 
-func bytesToNum(bTemp []byte) int {
+func bytesToNum(bTemp []byte) (int, int) {
 	i := 0
 	temp := 0
 	negative := false
@@ -43,13 +44,15 @@ func bytesToNum(bTemp []byte) int {
 	i++
 	if bTemp[i] != '.' {
 		temp = temp*10 + int(bTemp[i]-'0')
+		i++
 	}
 	i++
 	temp = temp*10 + int(bTemp[i]-'0')
 	if negative {
 		temp = -temp
 	}
-	return temp
+	i += 2
+	return temp, i
 }
 
 func main() {
@@ -73,34 +76,54 @@ func main() {
 	defer file.Close()
 
 	temps := make(map[string]*StatHolder)
-	fReader := bufio.NewScanner(file)
-	for fReader.Scan() {
-		line := fReader.Bytes()
-		bCity, temp, found := split(line)
-		if !found {
-			fmt.Printf("did not find ; in %s\n", line)
-			continue
+	buf := make([]byte, 1024)
+	pos := 0
+	for {
+		read, err := file.Read(buf[pos:])
+		if err != nil && err != io.EOF {
+			panic("could not read from file: " + err.Error())
 		}
-		nTemp := bytesToNum(temp)
-		city := string(bCity)
-		cityStat, exists := temps[city]
-		if !exists {
-			temps[city] = &StatHolder{
-				Max:   nTemp,
-				Min:   nTemp,
-				Sum:   nTemp,
-				Count: 1,
+		if pos+read == 0 {
+			break
+		}
+		chunk := buf[:pos+read]
+		newline := bytes.LastIndexByte(chunk, '\n')
+		if newline < 0 {
+			break
+		}
+		remaining := chunk[newline+1:]
+		chunk = chunk[:newline+1]
+		for {
+			bCity, after, hasSemi := bytes.Cut(chunk, []byte{';'})
+			if !hasSemi {
+				break
 			}
-		} else {
-			cityStat.Sum += nTemp
-			cityStat.Count++
-			if cityStat.Max < nTemp {
-				cityStat.Max = nTemp
-			}
-			if cityStat.Min > nTemp {
-				cityStat.Min = nTemp
+			index := 0
+			temp, forward := bytesToNum(after)
+			index += forward
+			chunk = after[index:]
+			city := string(bCity)
+			cityStat, found := temps[city]
+			if !found {
+				temps[city] = &StatHolder{
+					Max:   temp,
+					Min:   temp,
+					Sum:   temp,
+					Count: 1,
+				}
+			} else {
+				cityStat.Sum += temp
+				cityStat.Count++
+				if cityStat.Max < temp {
+					cityStat.Max = temp
+				}
+				if cityStat.Min > temp {
+					cityStat.Min = temp
+				}
 			}
 		}
+
+		pos = copy(buf, remaining)
 	}
 	for city, cityStat := range temps {
 		avg := float64(cityStat.Sum) / float64(cityStat.Count) / 10
